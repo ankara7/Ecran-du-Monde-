@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#2b3fd6">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <!-- Si tu renseignes PROXY_URL ou AI_URL, ajoute leur adresse à connect-src ci-dessous. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src https: blob:; connect-src 'self' https://tmdb-proxy.ecrans-monde.workers.dev https://api.themoviedb.org https://*.supabase.co; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://archive.org; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src https: blob:; connect-src 'self' https://tmdb-proxy.ecrans-monde.workers.dev https://api.themoviedb.org https://*.supabase.co https://tiktok-publish.ecrans-monde.workers.dev https://voix-ia.ecrans-monde.workers.dev; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://archive.org; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <title>Écrans du monde : films et séries</title>
@@ -157,7 +157,7 @@ footer{max-width:1200px;margin:2rem auto 0;padding:1.25rem 1rem;border-top:1px s
   <div id="aiout"></div></section>
 <section class="view" id="v-comm" hidden><h1 class="page">Communauté</h1><div id="comm"></div></section>
 <section class="view" id="v-free" hidden><h1 class="page">Films et séries gratuits</h1><p class="count">Contenus diffusés avec l’autorisation de leurs ayants droit.</p><div class="chips" id="freetabs"></div><p class="count" id="freenote"></p><ul class="grid" id="freegrid"></ul></section>
-<section class="view" id="v-admin" hidden><h1 class="page">Administration</h1><div class="panel" id="adm"></div><div class="panel" id="admlist"></div></section>
+<section class="view" id="v-admin" hidden><h1 class="page">Administration</h1><div class="panel" id="adm"></div><div class="panel" id="admlist"></div><div class="panel" id="admmx" style="max-width:40rem"></div><div class="panel" id="admtt"></div></section>
 <section class="view" id="v-list" hidden>
   <h1 class="page">Ma liste</h1>
   <div class="chips" id="tabs"></div><p class="count" id="listnote"></p>
@@ -187,7 +187,7 @@ footer{max-width:1200px;margin:2rem auto 0;padding:1.25rem 1rem;border-top:1px s
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* Configuration. Pour un site public, utilise PROXY_URL (voir la note de fin) plutôt que TMDB_KEY. */
-const CFG = { TMDB_KEY:"", PROXY_URL:"https://tmdb-proxy.ecrans-monde.workers.dev", SUPABASE_URL:"https://uinhhdhtawqqrkvjabxf.supabase.co", SUPABASE_KEY:"sb_publishable_jLPbj0y4MzyRw5rQ83cYtw_ynVELhNd", AI_URL:"" };
+const CFG = { TMDB_KEY:"", PROXY_URL:"https://tmdb-proxy.ecrans-monde.workers.dev", SUPABASE_URL:"https://uinhhdhtawqqrkvjabxf.supabase.co", SUPABASE_KEY:"sb_publishable_jLPbj0y4MzyRw5rQ83cYtw_ynVELhNd", AI_URL:"", TT_URL:"https://tiktok-publish.ecrans-monde.workers.dev", VOICE_URL:"https://voix-ia.ecrans-monde.workers.dev" };
 
 /* Films et séries que tu as le droit de diffuser. Ajoute une ligne par titre :
    { title:"Titre du film", type:"movie", url:"https://www.youtube.com/watch?v=XXXX" }
@@ -248,7 +248,8 @@ async function api(path, params = {}){
   for (const [k,v] of Object.entries(params)) if (v !== "" && v != null) url.searchParams.set(k, v);
   const ck = url.toString();
   if (cache.has(ck)) return cache.get(ck);
-  const res = await fetch(url, { headers, signal:AbortSignal.timeout(12000) });
+  // URL en chaîne et délai sans AbortSignal : certains aperçus (application mobile) ne savent pas transmettre ces objets.
+  const res = await Promise.race([fetch(ck, { headers }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 12000))]);
   if (res.status === 401) throw new Error("auth");
   if (!res.ok) throw new Error("http " + res.status);
   const data = await res.json();
@@ -689,6 +690,186 @@ function renderAdmin(){
   const rows = state.catalog.filter(x => x.id);
   $("admlist").innerHTML = `<h2>Catalogue (${rows.length})</h2>` + rows.map(x => `<p>${esc(x.title)} <span class="muted">${x.type === "tv" ? "série" : "film"}</span> <button class="plink" type="button" data-del="${esc(x.id)}">Supprimer</button></p>`).join("");
   $("admlist").onclick = async e => { const b = e.target.closest("[data-del]"); if (b && confirm("Supprimer ce titre ?")){ await sb.from("catalog").delete().eq("id", b.dataset.del); await loadCatalog(); renderAdmin(); } };
+  renderMontage();
+  renderTikTok();
+}
+
+/* ---------- Montage avec voix IA (administrateur) ---------- */
+const MX_LANGS = [["fr","Français",1],["en","English",1],["es","Español",1],["zh","中文",1],["ja","日本語",1],["ko","한국어",1],["pt","Português",0],["ar","العربية",0],["sw","Kiswahili",0],["de","Deutsch",0],["it","Italiano",0],["tr","Türkçe",0],["hi","हिन्दी",0]];
+const mx = { buf:null, out:null, music:null, attr:"" };
+async function vxFetch(path, body){
+  const { data } = await sb.auth.getSession(), tok = data.session?.access_token;
+  const r = await fetch(CFG.VOICE_URL + path, { method:"POST", headers:{ Authorization:"Bearer " + tok, "content-type":"application/json" }, body:JSON.stringify(body) });
+  if (!r.ok){ const j = await r.json().catch(() => ({})); throw new Error(j.error || "Erreur " + r.status); }
+  return r;
+}
+const mxWrap = (c, text, maxW) => { const out = []; let line = ""; for (const w of text.split(/\s+/)){ const t = line ? line + " " + w : w; if (c.measureText(t).width > maxW && line){ out.push(line); line = w; } else line = t; } if (line) out.push(line); return out; };
+function renderMontage(){
+  const box = $("admmx"); if (!box) return;
+  if (!state.admin){ box.innerHTML = ""; return; }
+  mx.buf = null; mx.out = null; mx.music = null; mx.attr = "";
+  const lang = ls.get("mx_lang", "fr");
+  box.innerHTML = `<h2>Montage avec voix IA</h2>
+    <p>Charge un extrait ou une bande-annonce dont tu détiens les droits, découpe-le, ajoute une voix off dans la langue de ton choix, puis exporte.</p>
+    <form id="mxf">
+      <input id="mx-file" type="file" accept="video/*" aria-label="Vidéo source">
+      <video id="mx-vid" controls playsinline hidden style="width:100%;max-height:50vh;background:#000;border-radius:10px"></video>
+      <div class="row2"><label class="muted">Début (s) <input id="mx-t0" type="number" min="0" step="0.1" value="0" style="width:6rem"></label><button class="btn alt" type="button" id="mx-s0">Début ici</button>
+        <label class="muted">Fin (s) <input id="mx-t1" type="number" min="0" step="0.1" style="width:6rem"></label><button class="btn alt" type="button" id="mx-s1">Fin ici</button></div>
+      <select id="mx-fmt" aria-label="Format"><option value="cover">Vertical 9:16 (recadré)</option><option value="contain">Vertical 9:16 (bandes noires)</option><option value="orig">Format d’origine</option></select>
+      <input id="mx-title" maxlength="120" placeholder="Texte affiché sur la vidéo (facultatif)" aria-label="Texte sur la vidéo">
+      <label class="muted">Volume du son d’origine : <span id="mx-vv">20</span> % <input id="mx-vol" type="range" min="0" max="100" value="20"></label>
+      <h3 style="margin:.6rem 0 0">Voix off</h3>
+      <select id="mx-lang" aria-label="Langue de la voix">${MX_LANGS.map(([c,n,v]) => `<option value="${c}" ${c === lang ? "selected" : ""}>${n}${v ? "" : " (texte seulement, sans voix)"}</option>`).join("")}</select>
+      <label class="muted">Mon texte est écrit en <select id="mx-src" style="min-height:44px">${MX_LANGS.map(([c,n]) => `<option value="${c}" ${c === "fr" ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <textarea id="mx-text" rows="5" maxlength="4000" placeholder="Texte de la voix off (écris-le dans la langue choisie, ou clique sur Traduire)" aria-label="Texte de la voix off"></textarea>
+      <div class="row2"><button class="btn alt" type="button" id="mx-tr">Traduire dans cette langue</button>
+        <button class="btn" type="button" id="mx-gen">Générer la voix</button></div>
+      <audio id="mx-aud" controls hidden style="width:100%"></audio>
+      <h3 style="margin:.6rem 0 0">Musique de fond (depuis Internet)</h3>
+      <div class="row2"><input id="mx-mq" maxlength="100" placeholder="Chercher (ex. cinematic, ambient, piano)" aria-label="Rechercher une musique" style="flex:1;min-width:10rem"><button class="btn alt" type="button" id="mx-ms">Rechercher</button></div>
+      <div id="mx-mres"></div>
+      <div class="row2"><input id="mx-murl" type="url" placeholder="ou lien direct https://… vers un fichier audio (mp3, ogg, wav)" aria-label="Lien audio" style="flex:1;min-width:10rem"><button class="btn alt" type="button" id="mx-mu">Utiliser ce lien</button></div>
+      <p class="muted" id="mx-mcur">Aucune musique choisie.</p>
+      <label class="muted">Volume de la musique : <span id="mx-mvv">25</span> % <input id="mx-mvol" type="range" min="0" max="100" value="25"></label>
+      <label><input type="checkbox" id="mx-mrights"> Je confirme que la licence de cette musique m’autorise cet usage (et je mentionne l’auteur si elle l’exige).</label>
+      <button class="btn" type="button" id="mx-go">Créer le montage</button>
+      <p id="mx-msg" role="status"></p>
+      <div id="mx-res" hidden><video id="mx-out" controls playsinline style="width:100%;max-height:60vh;background:#000;border-radius:10px"></video>
+        <div class="row2" style="margin-top:.5rem"><a class="btn alt" id="mx-dl" style="text-decoration:none;display:inline-flex;align-items:center">Télécharger</a><button class="btn" type="button" id="mx-tt">Envoyer vers TikTok</button></div></div>
+    </form>`;
+  const say = m => $("mx-msg").textContent = m, v = $("mx-vid");
+  $("mxf").onsubmit = e => e.preventDefault();
+  $("mx-vol").oninput = () => $("mx-vv").textContent = $("mx-vol").value;
+  $("mx-lang").onchange = () => { ls.set("mx_lang", $("mx-lang").value); mx.buf = null; $("mx-aud").hidden = true; };
+  $("mx-file").onchange = () => { const f = $("mx-file").files[0]; if (!f) return; v.src = URL.createObjectURL(f); v.hidden = false; v.onloadedmetadata = () => { $("mx-t0").value = 0; $("mx-t1").value = v.duration.toFixed(1); }; };
+  $("mx-mvol").oninput = () => $("mx-mvv").textContent = $("mx-mvol").value;
+  const useMusic = async (url, label, attr) => { say("Chargement de la musique…");
+    try{ const blob = await (await vxFetch("/music/file", { url })).blob(); const ac = new AudioContext(); mx.music = await ac.decodeAudioData(await blob.arrayBuffer()); ac.close();
+      mx.attr = attr || ""; $("mx-mcur").textContent = "Musique choisie : " + label + " (" + mx.music.duration.toFixed(0) + " s)" + (mx.attr ? " · " + mx.attr : ""); say("Musique prête."); }
+    catch(err){ mx.music = null; say("Échec : " + err.message); } };
+  let mres = [];
+  $("mx-ms").onclick = async () => { const q = $("mx-mq").value.trim(); if (!q) return; say("Recherche…");
+    try{ mres = (await (await vxFetch("/music/search", { q })).json()).results; say(mres.length ? "" : "Aucun résultat.");
+      $("mx-mres").innerHTML = mres.map((m, i) => `<div style="border:1px solid var(--line);border-radius:10px;padding:.5rem;margin:.4rem 0"><strong>${esc(m.title)}</strong> <span class="muted">${esc(m.creator)} · ${esc(m.license)}${m.duration ? " · " + fmtT(m.duration) : ""}</span><br><audio controls preload="none" src="${esc(m.url)}" style="width:100%;margin:.3rem 0"></audio><br><button class="btn alt" type="button" data-mu="${i}">Utiliser</button> ${m.landing ? `<a class="muted" href="${esc(m.landing)}" target="_blank" rel="noopener">Source</a>` : ""}</div>`).join(""); }
+    catch(err){ say("Échec : " + err.message); } };
+  $("mx-mres").onclick = e => { const b = e.target.closest("[data-mu]"); if (!b) return; const m = mres[+b.dataset.mu]; useMusic(m.url, m.title, m.attribution || (m.title + " par " + m.creator + " (" + m.license + ")")); };
+  $("mx-mu").onclick = () => { const u = $("mx-murl").value.trim(); if (!/^https:\/\//.test(u)){ say("Le lien doit commencer par https://"); return; } useMusic(u, u, ""); };
+  $("mx-s0").onclick = () => $("mx-t0").value = v.currentTime.toFixed(1);
+  $("mx-s1").onclick = () => $("mx-t1").value = v.currentTime.toFixed(1);
+  const langName = () => MX_LANGS.find(x => x[0] === $("mx-lang").value)[1];
+  $("mx-tr").onclick = async () => { const t = $("mx-text").value.trim(); if (!t){ say("Écris d’abord un texte."); return; }
+    say("Traduction…"); try{ $("mx-text").value = (await (await vxFetch("/translate", { text:t, from:$("mx-src").value, to:$("mx-lang").value })).json()).text; mx.buf = null; say("Texte traduit en " + langName() + "."); }catch(err){ say("Échec : " + err.message); } };
+  $("mx-gen").onclick = async () => { const t = $("mx-text").value.trim(); if (!t){ say("Écris d’abord le texte de la voix off."); return; }
+    if (!MX_LANGS.find(x => x[0] === $("mx-lang").value)[2]){ say("Pas de voix IA gratuite en " + langName() + " : choisis français, anglais, espagnol, chinois, japonais ou coréen."); return; }
+    say("Génération de la voix…");
+    try{
+      const blob = await (await vxFetch("/tts", { text:t, lang:$("mx-lang").value })).blob();
+      const ac = new AudioContext(); mx.buf = await ac.decodeAudioData(await blob.arrayBuffer()); ac.close();
+      const a = $("mx-aud"); a.src = URL.createObjectURL(blob); a.hidden = false;
+      const clip = (+$("mx-t1").value || v.duration || 0) - (+$("mx-t0").value || 0);
+      say("Voix prête (" + mx.buf.duration.toFixed(1) + " s)." + (clip && mx.buf.duration > clip + .5 ? " Elle dépasse la durée de l’extrait (" + clip.toFixed(1) + " s) : rallonge l’extrait ou raccourcis le texte." : ""));
+    }catch(err){ say("Échec : " + err.message); } };
+  $("mx-go").onclick = async () => {
+    if (!v.src){ say("Choisis d’abord une vidéo."); return; }
+    if (!window.MediaRecorder){ say("Ce navigateur ne sait pas exporter de vidéo."); return; }
+    if (mx.music && !$("mx-mrights").checked){ say("Coche la confirmation des droits sur la musique."); return; }
+    const t0 = +$("mx-t0").value || 0, t1 = +$("mx-t1").value || v.duration;
+    if (!(t1 > t0)){ say("La fin doit être après le début."); return; }
+    const fmt = $("mx-fmt").value, vw = v.videoWidth || 1280, vh = v.videoHeight || 720;
+    const sc = Math.min(1, 1280 / vw), W = fmt === "orig" ? Math.round(vw * sc / 2) * 2 : 720, H = fmt === "orig" ? Math.round(vh * sc / 2) * 2 : 1280;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const c = cv.getContext("2d");
+    const mime = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/webm;codecs=vp9,opus", "video/webm"].find(m => MediaRecorder.isTypeSupported(m));
+    if (!mime){ say("Format d’export non pris en charge par ce navigateur."); return; }
+    if (!v._mx){ const ac = new AudioContext(), dest = ac.createMediaStreamDestination(), g = ac.createGain(); ac.createMediaElementSource(v).connect(g); g.connect(dest); v._mx = { ac, dest, g }; }
+    const { ac, dest, g } = v._mx; await ac.resume(); g.gain.value = $("mx-vol").value / 100;
+    const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+    const rec = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond:4000000 }), chunks = [];
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    const title = $("mx-title").value.trim();
+    const draw = () => {
+      c.fillStyle = "#000"; c.fillRect(0, 0, W, H);
+      const k = fmt === "cover" ? Math.max(W / vw, H / vh) : Math.min(W / vw, H / vh), dw = vw * k, dh = vh * k;
+      c.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      if (title){ const fs = Math.round(W * .06); c.font = `800 ${fs}px sans-serif`; c.textAlign = "center"; c.lineWidth = fs / 6; c.strokeStyle = "rgba(0,0,0,.85)"; c.fillStyle = "#fff";
+        const ls2 = mxWrap(c, title, W * .86); ls2.forEach((l, i) => { const y = H - H * .1 - (ls2.length - 1 - i) * fs * 1.2; c.strokeText(l, W / 2, y); c.fillText(l, W / 2, y); }); }
+    };
+    $("mx-go").disabled = true; $("mx-res").hidden = true; v.pause(); v.currentTime = t0; await new Promise(r => v.addEventListener("seeked", r, { once:true }));
+    const done = new Promise(r => rec.onstop = r); let vs;
+    rec.start(500);
+    if (mx.buf){ vs = ac.createBufferSource(); vs.buffer = mx.buf; vs.connect(dest); vs.start(); }
+    let ms;
+    if (mx.music){ const now = ac.currentTime, dur = t1 - t0, mg = ac.createGain(), mv = $("mx-mvol").value / 100; mg.gain.setValueAtTime(mv, now); mg.gain.setValueAtTime(mv, now + Math.max(0, dur - 2)); mg.gain.linearRampToValueAtTime(0, now + dur);
+      ms = ac.createBufferSource(); ms.buffer = mx.music; ms.loop = true; ms.connect(mg); mg.connect(dest); ms.start(); }
+    await v.play();
+    await new Promise(res => { const tick = () => { draw(); const p = Math.min(100, Math.round((v.currentTime - t0) / (t1 - t0) * 100)); say("Montage en cours : " + p + " % (garde cet onglet ouvert)"); if (v.currentTime >= t1 || v.ended) res(); else requestAnimationFrame(tick); }; tick(); });
+    v.pause(); try{ vs && vs.stop(); ms && ms.stop(); }catch(e){} rec.stop(); await done;
+    const ext = mime.startsWith("video/mp4") ? "mp4" : "webm", blob = new Blob(chunks, { type:mime.split(";")[0] });
+    mx.out = new File([blob], "montage." + ext, { type:blob.type });
+    const url = URL.createObjectURL(blob); $("mx-out").src = url; $("mx-dl").href = url; $("mx-dl").download = "montage." + ext; $("mx-res").hidden = false;
+    say("Montage terminé (" + (blob.size / 1048576).toFixed(1) + " Mo)." + (mx.buf ? "" : " Aucune voix off n’a été ajoutée.")); $("mx-go").disabled = false; };
+  $("mx-tt").onclick = () => { if (!mx.out) return; const inp = $("tt-file");
+    if (!inp){ say("Connecte d’abord ton compte TikTok (panneau ci-dessous)."); return; }
+    const dt = new DataTransfer(); dt.items.add(mx.out); inp.files = dt.files; const cap = $("tt-cap"); if (mx.attr && cap && !cap.value.includes(mx.attr)) cap.value = (cap.value ? cap.value + "\n" : "") + "Musique : " + mx.attr; $("ttf").scrollIntoView({ behavior:"smooth" }); say("Vidéo placée dans le formulaire TikTok."); };
+}
+
+/* ---------- Publication TikTok (administrateur) ---------- */
+async function ttFetch(path, opts = {}){
+  const { data } = await sb.auth.getSession(), tok = data.session?.access_token;
+  const r = await fetch(CFG.TT_URL + path, { ...opts, headers:{ ...(opts.headers || {}), Authorization:"Bearer " + tok } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Erreur " + r.status);
+  return j;
+}
+const TT_PRIV = { PUBLIC_TO_EVERYONE:"Tout le monde", MUTUAL_FOLLOW_FRIENDS:"Amis (abonnement mutuel)", FOLLOWER_OF_CREATOR:"Mes abonnés", SELF_ONLY:"Moi uniquement (privé)" };
+const TT_STATE = { PROCESSING_UPLOAD:"Envoi en cours…", PROCESSING_DOWNLOAD:"Traitement par TikTok…", SEND_TO_USER_INBOX:"Envoyée dans ta boîte TikTok.", PUBLISH_COMPLETE:"Publiée sur TikTok." };
+async function renderTikTok(){
+  const box = $("admtt"); if (!box) return;
+  if (!state.admin){ box.innerHTML = ""; return; }
+  if (!CFG.TT_URL){ box.innerHTML = `<h2>Publier sur TikTok</h2><p>Non configuré. Déploie worker-tiktok.js et renseigne TT_URL dans le code.</p>`; return; }
+  box.innerHTML = `<h2>Publier sur TikTok</h2><p>Chargement…</p>`;
+  let me;
+  try{ me = await ttFetch("/me"); }catch(err){ box.innerHTML = `<h2>Publier sur TikTok</h2><p class="note">${esc(err.message)}</p>`; return; }
+  if (!me.connected){
+    box.innerHTML = `<h2>Publier sur TikTok</h2><p>Connecte ton compte TikTok pour publier tes bandes-annonces et extraits depuis ici.</p><button class="btn" type="button" id="ttc">Connecter TikTok</button><p class="note" id="ttm" role="status"></p>`;
+    $("ttc").onclick = async () => { try{ location.href = (await ttFetch("/auth/start")).url; }catch(err){ $("ttm").textContent = err.message; } };
+    return;
+  }
+  let ci;
+  try{ ci = (await ttFetch("/creator")).data || {}; }catch(err){ box.innerHTML = `<h2>Publier sur TikTok</h2><p class="note">${esc(err.message)}</p>`; return; }
+  const maxS = ci.max_video_post_duration_sec || 600;
+  box.innerHTML = `<h2>Publier sur TikTok</h2><p>Compte : <strong>${esc(ci.creator_nickname || me.name || "")}</strong> ${ci.creator_username ? "(@" + esc(ci.creator_username) + ")" : ""} <button class="plink" type="button" id="ttx">Déconnecter</button></p>
+    <form id="ttf">
+      <input id="tt-file" type="file" accept="video/mp4,video/quicktime,video/webm" required aria-label="Vidéo à publier">
+      <p class="muted" id="tt-info">MP4 ou MOV conseillé, 50 Mo maximum, ${Math.floor(maxS / 60)} min maximum.</p>
+      <textarea id="tt-cap" maxlength="2200" rows="3" placeholder="Légende et #hashtags" aria-label="Légende"></textarea>
+      <select id="tt-priv" required aria-label="Visibilité"><option value="">Qui peut voir cette vidéo ?</option>${(ci.privacy_level_options || []).map(p => `<option value="${esc(p)}">${esc(TT_PRIV[p] || p)}</option>`).join("")}</select>
+      <label><input type="checkbox" id="tt-com" ${ci.comment_disabled ? "disabled" : ""}> Autoriser les commentaires</label>
+      <label><input type="checkbox" id="tt-duet" ${ci.duet_disabled ? "disabled" : ""}> Autoriser les duos</label>
+      <label><input type="checkbox" id="tt-stitch" ${ci.stitch_disabled ? "disabled" : ""}> Autoriser les collages (stitch)</label>
+      <label><input type="checkbox" id="tt-ok" required> Je détiens les droits sur cette vidéo et j’accepte la Déclaration d’utilisation de la musique de TikTok.</label>
+      <button class="btn" type="submit" id="tt-go">Publier</button><p id="tt-msg" role="status"></p>
+    </form>`;
+  $("ttx").onclick = async () => { if (confirm("Déconnecter le compte TikTok ?")){ await ttFetch("/disconnect", { method:"POST" }); renderTikTok(); } };
+  const say = m => $("tt-msg").textContent = m;
+  $("ttf").onsubmit = async e => { e.preventDefault();
+    const f = $("tt-file").files[0]; if (!f) return;
+    if (f.size > 50 * 1024 * 1024){ say("Vidéo trop lourde (50 Mo maximum)."); return; }
+    const dur = await new Promise(res => { const v = document.createElement("video"), u = URL.createObjectURL(f); v.preload = "metadata"; v.onloadedmetadata = () => { URL.revokeObjectURL(u); res(isFinite(v.duration) ? v.duration : 0); }; v.onerror = () => res(0); v.src = u; });
+    if (dur > maxS){ say("Vidéo trop longue pour ce compte (" + Math.floor(maxS / 60) + " min maximum)."); return; }
+    const meta = { title:$("tt-cap").value.trim(), privacy:$("tt-priv").value, comment:$("tt-com").checked, duet:$("tt-duet").checked, stitch:$("tt-stitch").checked, mime:f.type || "video/mp4" };
+    $("tt-go").disabled = true; say("Envoi vers TikTok…");
+    try{
+      const { publish_id } = await ttFetch("/publish?meta=" + encodeURIComponent(JSON.stringify(meta)), { method:"POST", headers:{ "content-type":meta.mime }, body:f });
+      for (let i = 0; i < 40; i++){
+        await new Promise(r => setTimeout(r, 3000));
+        const s = await ttFetch("/result?id=" + encodeURIComponent(publish_id));
+        if (s.status === "FAILED"){ throw new Error("Refusée par TikTok : " + (s.fail_reason || "raison inconnue")); }
+        say(TT_STATE[s.status] || s.status);
+        if (s.status === "PUBLISH_COMPLETE" || s.status === "SEND_TO_USER_INBOX"){ $("ttf").reset(); break; }
+      }
+    }catch(err){ say("Échec : " + err.message); }
+    $("tt-go").disabled = false; };
 }
 
 /* ---------- Extraits et bandes-annonces ---------- */
