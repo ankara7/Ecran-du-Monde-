@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#2b3fd6">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <!-- Si tu renseignes PROXY_URL ou AI_URL, ajoute leur adresse à connect-src ci-dessous. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src https: blob:; connect-src 'self' https://api.themoviedb.org https://*.supabase.co; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://archive.org; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src https: blob:; connect-src 'self' https://tmdb-proxy.ecrans-monde.workers.dev https://api.themoviedb.org https://*.supabase.co; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://archive.org; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <title>Écrans du monde : films et séries</title>
@@ -186,7 +186,7 @@ footer{max-width:1200px;margin:2rem auto 0;padding:1.25rem 1rem;border-top:1px s
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* Configuration. Pour un site public, utilise PROXY_URL (voir la note de fin) plutôt que TMDB_KEY. */
-const CFG = { TMDB_KEY:"", PROXY_URL:"", SUPABASE_URL:"https://uinhhdhtawqqrkvjabxf.supabase.co", SUPABASE_KEY:"sb_publishable_jLPbj0y4MzyRw5rQ83cYtw_ynVELhNd", AI_URL:"" };
+const CFG = { TMDB_KEY:"", PROXY_URL:"https://tmdb-proxy.ecrans-monde.workers.dev", SUPABASE_URL:"https://uinhhdhtawqqrkvjabxf.supabase.co", SUPABASE_KEY:"sb_publishable_jLPbj0y4MzyRw5rQ83cYtw_ynVELhNd", AI_URL:"" };
 
 /* Films et séries que tu as le droit de diffuser. Ajoute une ligne par titre :
    { title:"Titre du film", type:"movie", url:"https://www.youtube.com/watch?v=XXXX" }
